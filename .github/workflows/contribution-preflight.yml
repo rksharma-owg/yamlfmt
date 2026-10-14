@@ -40,7 +40,9 @@ jobs:
           go version
           go mod tidy
           make vet
+          go clean -testcache
           make test_v
+          go clean -testcache
           make integrationtest
           git diff --exit-code
       - name: Patch upstream checks
@@ -50,7 +52,9 @@ jobs:
           go version
           go mod tidy
           make vet
+          go clean -testcache
           make test_v
+          go clean -testcache
           make integrationtest
           git diff --exit-code
       - name: Changed Go formatting and diff hygiene
