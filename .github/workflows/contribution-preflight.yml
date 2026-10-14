@@ -1,0 +1,80 @@
+name: Scalar newline preflight
+on:
+  push:
+    branches: [codex/yamlfmt-preflight]
+permissions:
+  contents: read
+env:
+  PATCH_SHA: a8912ab52cb252c270c971bbc7b55147c987b7cb
+  BASE_SHA: dea0b791be9796b82c2e7cf6864cb7dc36023d0b
+jobs:
+  test:
+    name: Go ${{ matrix.go }} / toolchain ${{ matrix.toolchain }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.23.x', '1.24.x', '1.25.x']
+        toolchain: [auto, local]
+    env:
+      GOTOOLCHAIN: ${{ matrix.toolchain }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.PATCH_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact patch and baseline
+        run: |
+          test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+          git merge-base --is-ancestor "$BASE_SHA" "$PATCH_SHA"
+          echo "Patch $PATCH_SHA; base $BASE_SHA; harness $GITHUB_SHA"
+      - uses: actions/setup-go@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+      - name: Baseline upstream checks
+        run: |
+          git checkout --detach "$BASE_SHA"
+          go version
+          go mod tidy
+          make vet
+          make test_v
+          make integrationtest
+          git diff --exit-code
+      - name: Patch upstream checks
+        run: |
+          git checkout --detach "$PATCH_SHA"
+          test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+          go version
+          go mod tidy
+          make vet
+          make test_v
+          make integrationtest
+          git diff --exit-code
+      - name: Changed Go formatting and diff hygiene
+        run: |
+          files=(internal/features/trim_whitespace.go internal/features/trim_whitespace_test.go formatters/basic/formatter_test.go)
+          test -z "$(gofmt -l "${files[@]}")"
+          git diff --check "$BASE_SHA" "$PATCH_SHA"
+  license:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.PATCH_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact patch
+        run: test "$(git rev-parse HEAD)" = "$PATCH_SHA"
+      - uses: actions/setup-go@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          go-version: '1.25.x'
+          cache: true
+      - name: Upstream license check
+        run: |
+          go version
+          make install_tools
+          make addlicense_check
